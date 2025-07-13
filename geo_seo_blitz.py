@@ -132,7 +132,8 @@ def inject_metadata():
 def push_sitemap_and_recrawl():
     base = clean_base_url(SITE_URL)
     urls = [f"{base}{p}" for p in [TARGET_PATH, '/products/all-in-massager']]
-    # Generate sitemap XML\    urlset = ET.Element('urlset', xmlns='http://www.sitemaps.org/schemas/sitemap/0.9')
+    # Generate sitemap XML
+    urlset = ET.Element('urlset', xmlns='http://www.sitemaps.org/schemas/sitemap/0.9')
     for u in urls:
         ue = ET.SubElement(urlset, 'url')
         ET.SubElement(ue, 'loc').text = u
