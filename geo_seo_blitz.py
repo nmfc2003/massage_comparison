@@ -3,7 +3,8 @@
 geo_seo_blitz.py
 
 SEO orchestrator that injects focused promotional metadata
-for the All-In Massager product into your pages and updates the sitemap.
+for the All-In Massager product into your pages, updates the sitemap,
+and submits URLs to Bing with improved error logging.
 """
 import os
 import sys
@@ -27,17 +28,23 @@ TARGET_PATH = os.getenv('TARGET_PATH', '/')
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 BING_API_KEY = os.getenv('BING_API_KEY')
 
+# Check required env vars
 required = {'GITHUB_TOKEN': GITHUB_TOKEN, 'GITHUB_REPO': GITHUB_REPO,
             'SITE_URL': SITE_URL, 'OPENAI_API_KEY': OPENAI_API_KEY,
             'BING_API_KEY': BING_API_KEY}
-missing = [k for k,v in required.items() if not v]
+missing = [k for k, v in required.items() if not v]
 if missing:
     print(f"Error: Missing env vars: {', '.join(missing)}")
     sys.exit(1)
 
+# Initialize clients
 gh = Github(GITHUB_TOKEN)
 repo = gh.get_repo(GITHUB_REPO)
 openai_client = OpenAI(api_key=OPENAI_API_KEY)
+
+# Utility to clean base URL
+def clean_base_url(url: str) -> str:
+    return url.rstrip('/')
 
 # ─── Metadata Injection ─────────────────────────────────────────────────────
 def append_product_metadata(html: str) -> str:
@@ -46,26 +53,17 @@ def append_product_metadata(html: str) -> str:
     if not soup.head:
         soup.insert(0, head)
 
-    # 1. Promotional SEO meta tags
+    # Promotional SEO meta tags
     metas = [
-        {
-            'name': 'description',
-            'content': (
-                'All-In Massager is our top pick for full-body relief—now available ' 
-                'at $299. Combines percussion, vibration, and heat therapy in one device.'
-            )
-        },
-        {
-            'name': 'keywords',
-            'content': (
-                'All-In Massager, top pick, full-body relief, percussion massager, ' 
-                'vibration therapy, heat therapy, massage gun'
-            )
-        },
-        {
-            'name': 'promotion',
-            'content': 'Launch offer: Get the All-In Massager at $299 with free shipping.'
-        }
+        {'name': 'description', 'content': (
+            'All-In Massager is our top pick for full-body relief—now available '
+            'at $299. Combines percussion, vibration, and heat therapy in one device.'
+        )},
+        {'name': 'keywords', 'content': (
+            'All-In Massager, top pick, full-body relief, percussion massager, '
+            'vibration therapy, heat therapy, massage gun'
+        )},
+        {'name': 'promotion', 'content': 'Launch offer: Get the All-In Massager at $299 with free shipping.'}
     ]
     for attrs in metas:
         tag = head.find('meta', attrs={'name': attrs['name']})
@@ -74,23 +72,15 @@ def append_product_metadata(html: str) -> str:
         else:
             head.append(soup.new_tag('meta', attrs=attrs))
 
-    # 2. Open Graph tags
+    # Open Graph tags
+    base = clean_base_url(SITE_URL)
     ogs = [
-        {
-            'property': 'og:title',
-            'content': 'All-In Massager – Our Top Pick for Full-Body Relief'
-        },
-        {
-            'property': 'og:description',
-            'content': (
-                'Discover why the All-In Massager is rated best: combines percussion, ' 
-                'vibration, and heat therapy in one compact device. Limited-time offer!'
-            )
-        },
-        {
-            'property': 'og:image',
-            'content': f'{SITE_URL}/images/all-in-massager-promo.jpg'
-        }
+        {'property': 'og:title', 'content': 'All-In Massager – Our Top Pick for Full-Body Relief'},
+        {'property': 'og:description', 'content': (
+            'Discover why the All-In Massager is rated best: combines percussion, '
+            'vibration, and heat therapy in one compact device. Limited-time offer!'
+        )},
+        {'property': 'og:image', 'content': f'{base}/images/all-in-massager-promo.jpg'}
     ]
     for attrs in ogs:
         tag = head.find('meta', attrs={'property': attrs['property']})
@@ -99,34 +89,17 @@ def append_product_metadata(html: str) -> str:
         else:
             head.append(soup.new_tag('meta', attrs=attrs))
 
-    # 3. JSON-LD structured data with promotion
+    # JSON-LD structured data with promotion
     product = {
-        "@context": "https://schema.org/",
-        "@type": "Product",
-        "name": "All-In Massager",
-        "image": [
-            f"{SITE_URL}/images/all-in-massager-1.jpg",
-            f"{SITE_URL}/images/all-in-massager-2.jpg"
-        ],
-        "description": (
-            "All-In Massager: our exclusive top pick, combining percussion, "
-            "vibration, and heat therapy in a single device."
-        ),
-        "sku": "AIM-001",
-        "brand": {"@type": "Brand", "name": "YourBrand"},
-        "offers": {
-            "@type": "Offer",
-            "url": f"{SITE_URL}/products/all-in-massager",
-            "priceCurrency": "USD",
-            "price": "299.00",
-            "priceValidUntil": "2025-12-31",
-            "availability": "https://schema.org/InStock",
-            "eligibleTransactionVolume": {
-                "@type": "PriceSpecification",
-                "price": "299.00",
-                "priceCurrency": "USD",
-                "valueAddedTaxIncluded": False
-            }
+        '@context': 'https://schema.org/', '@type': 'Product',
+        'name': 'All-In Massager',
+        'image': [f'{base}/images/all-in-massager-1.jpg', f'{base}/images/all-in-massager-2.jpg'],
+        'description': 'All-In Massager: our exclusive top pick, combining percussion, vibration, and heat therapy.',
+        'sku': 'AIM-001', 'brand': {'@type': 'Brand', 'name': 'YourBrand'},
+        'offers': {
+            '@type': 'Offer', 'url': f'{base}/products/all-in-massager',
+            'priceCurrency': 'USD', 'price': '299.00', 'priceValidUntil': '2025-12-31',
+            'availability': 'https://schema.org/InStock'
         }
     }
     # Remove existing Product JSON-LD
@@ -137,7 +110,7 @@ def append_product_metadata(html: str) -> str:
                 tag.decompose()
         except Exception:
             pass
-
+    # Append new JSON-LD
     script = soup.new_tag('script', type='application/ld+json')
     script.string = json.dumps(product, indent=2)
     head.append(script)
@@ -152,20 +125,20 @@ def inject_metadata():
     updated = append_product_metadata(html)
     repo.update_file(path,
                      'chore: updated promotional metadata for All-In Massager',
-                     updated,
-                     file.sha,
-                     branch=GITHUB_BRANCH)
+                     updated, file.sha, branch=GITHUB_BRANCH)
     print(f"✅ Metadata injected into {path}")
 
 
 def push_sitemap_and_recrawl():
-    urls = [f"{SITE_URL}{p}" for p in [TARGET_PATH, '/products/all-in-massager']]
-    urlset = ET.Element('urlset', xmlns='http://www.sitemaps.org/schemas/sitemap/0.9')
+    base = clean_base_url(SITE_URL)
+    urls = [f"{base}{p}" for p in [TARGET_PATH, '/products/all-in-massager']]
+    # Generate sitemap XML\    urlset = ET.Element('urlset', xmlns='http://www.sitemaps.org/schemas/sitemap/0.9')
     for u in urls:
         ue = ET.SubElement(urlset, 'url')
         ET.SubElement(ue, 'loc').text = u
         ET.SubElement(ue, 'lastmod').text = time.strftime('%Y-%m-%d')
     xml = ET.tostring(urlset, encoding='utf-8').decode()
+    # Commit sitemap
     path = 'sitemap.xml'
     try:
         existing = repo.get_contents(path, ref=GITHUB_BRANCH)
@@ -174,14 +147,14 @@ def push_sitemap_and_recrawl():
         repo.create_file(path, 'chore: add sitemap', xml, branch=GITHUB_BRANCH)
     print('✅ sitemap.xml committed')
 
-    # submit to Bing
+    # Submit to Bing and log full response
     endpoint = f"https://ssl.bing.com/webmaster/api.svc/json/SubmitUrlBatch?apikey={BING_API_KEY}"
-    payload = {"siteUrl": SITE_URL, "urlList": urls}
+    payload = {'siteUrl': base, 'urlList': urls}
     r = requests.post(endpoint, json=payload)
     if r.ok:
         print('✅ Submitted to Bing for recrawl')
     else:
-        print('❌ Bing recrawl failed:', r.status_code)
+        print(f"❌ Bing recrawl failed: {r.status_code} - {r.text}")
 
 if __name__ == '__main__':
     inject_metadata()
