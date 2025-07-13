@@ -4,7 +4,7 @@ geo_seo_blitz.py
 
 SEO orchestrator that injects focused promotional metadata
 for the All-In Massager product into your pages, updates the sitemap,
-and optionally pings search engines for recrawl (Google only).
+and submits URLs to Bing Webmaster API for recrawl.
 """
 import os
 import sys
@@ -19,18 +19,19 @@ from dotenv import load_dotenv
 
 # ─── Configuration ──────────────────────────────────────────────────────────
 load_dotenv()
-GITHUB_TOKEN = os.getenv('GITHUB_TOKEN')
-GITHUB_REPO = os.getenv('GITHUB_REPO')
-GITHUB_BRANCH = os.getenv('GITHUB_BRANCH', 'main')
-SITE_URL = os.getenv('SITE_URL')
-TARGET_PATH = os.getenv('TARGET_PATH', '/')
-PING_SEARCH_ENGINES = os.getenv('PING_SEARCH_ENGINES', 'true').lower() in ('true', '1')
+GITHUB_TOKEN       = os.getenv('GITHUB_TOKEN')
+GITHUB_REPO        = os.getenv('GITHUB_REPO')
+GITHUB_BRANCH      = os.getenv('GITHUB_BRANCH', 'main')
+SITE_URL           = os.getenv('SITE_URL')
+TARGET_PATH        = os.getenv('TARGET_PATH', '/')
+BING_API_KEY       = os.getenv('BING_API_KEY')
 
-# Check required env vars
+# Validate required env vars
 required = {
     'GITHUB_TOKEN': GITHUB_TOKEN,
     'GITHUB_REPO': GITHUB_REPO,
     'SITE_URL': SITE_URL,
+    'BING_API_KEY': BING_API_KEY
 }
 missing = [k for k, v in required.items() if not v]
 if missing:
@@ -41,7 +42,6 @@ if missing:
 gh = Github(GITHUB_TOKEN)
 repo = gh.get_repo(GITHUB_REPO)
 
-# Utility to clean base URL
 def clean_base_url(url: str) -> str:
     return url.rstrip('/')
 
@@ -58,7 +58,7 @@ def append_product_metadata(html: str) -> str:
     metas = [
         {'name': 'description', 'content': (
             'All-In Massager: top pick for full-body relief, now $299. ' 
-            'Bundle percussion, vibration & heat therapy in one device.'
+            'Bundles percussion, vibration & heat therapy in one device.'
         )},
         {'name': 'keywords', 'content': (
             'All-In Massager, percussion massager, heat therapy, vibration therapy'
@@ -119,8 +119,8 @@ def append_product_metadata(html: str) -> str:
 
     return str(soup)
 
-# ─── Sitemap & Ping ─────────────────────────────────────────────────────────
-def update_sitemap_and_ping():
+# ─── Sitemap & Bing Recrawl ─────────────────────────────────────────────────
+def update_sitemap_and_bing():
     base = clean_base_url(SITE_URL)
     urls = [f"{base}{p}" for p in [TARGET_PATH, '/products/all-in-massager']]
 
@@ -141,15 +141,21 @@ def update_sitemap_and_ping():
         repo.create_file(path, 'chore: add sitemap', xml, branch=GITHUB_BRANCH)
     print('✅ sitemap.xml committed')
 
-    # Optionally ping Google
-    if PING_SEARCH_ENGINES:
-        sitemap_url = f'{base}/sitemap.xml'
-        ping_url = 'https://www.google.com/ping'
-        r = requests.get(ping_url, params={'sitemap': sitemap_url})
-        if r.status_code == 200:
-            print('✅ Google ping successful')
-        else:
-            print(f'❌ Google ping failed: {r.status_code} - {r.text}')
+    # Submit to Bing Webmaster API
+    endpoint = f"https://ssl.bing.com/webmaster/api.svc/json/SubmitUrlBatch?apikey={BING_API_KEY}"
+    payload = {'siteUrl': base, 'urlList': urls}
+    r = requests.post(endpoint, json=payload)
+    try:
+        data = r.json()
+    except ValueError:
+        data = {}
+
+    if r.status_code == 200:
+        print('✅ Bing recrawl submitted')
+    elif data.get('ErrorCode') == 2:
+        print('⚠️ Bing quota reached for today; recrawl skipped')
+    else:
+        print(f"❌ Bing recrawl failed: {r.status_code} - {data.get('Message', r.text)}")
 
 # ─── Main ────────────────────────────────────────────────────────────────────
 if __name__ == '__main__':
@@ -161,6 +167,6 @@ if __name__ == '__main__':
     repo.update_file(path, 'chore: update promo metadata for All-In Massager', updated, file.sha, branch=GITHUB_BRANCH)
     print(f'✅ Metadata injected into {path}')
 
-    # Sitemap and ping
-    update_sitemap_and_ping()
+    # Sitemap and Bing recrawl
+    update_sitemap_and_bing()
     print('🎉 Done!')
