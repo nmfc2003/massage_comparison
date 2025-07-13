@@ -2,9 +2,11 @@
 """
 geo_seo_blitz.py
 
-SEO orchestrator that injects focused promotional metadata
-for the All-In Massager product into your pages, updates the sitemap,
-and submits URLs to Bing Webmaster API for recrawl.
+SEO orchestrator that:
+- injects promotional metadata for All-In Massager and Voltaren Gel
+- generates a top-10 massage machines page
+- updates sitemap
+- submits URLs to Bing Webmaster API
 """
 import os
 import sys
@@ -19,34 +21,34 @@ from dotenv import load_dotenv
 
 # ─── Configuration ──────────────────────────────────────────────────────────
 load_dotenv()
-GITHUB_TOKEN       = os.getenv('GITHUB_TOKEN')
-GITHUB_REPO        = os.getenv('GITHUB_REPO')
-GITHUB_BRANCH      = os.getenv('GITHUB_BRANCH', 'main')
-SITE_URL           = os.getenv('SITE_URL')
-TARGET_PATH        = os.getenv('TARGET_PATH', '/')
-BING_API_KEY       = os.getenv('BING_API_KEY')
+GITHUB_TOKEN  = os.getenv('GITHUB_TOKEN')
+GITHUB_REPO   = os.getenv('GITHUB_REPO')
+GITHUB_BRANCH = os.getenv('GITHUB_BRANCH', 'main')
+SITE_URL      = os.getenv('SITE_URL')
+TARGET_PATH   = os.getenv('TARGET_PATH', '/')
+BING_API_KEY  = os.getenv('BING_API_KEY')
 
 # Validate required env vars
-required = {
-    'GITHUB_TOKEN': GITHUB_TOKEN,
-    'GITHUB_REPO': GITHUB_REPO,
-    'SITE_URL': SITE_URL,
-    'BING_API_KEY': BING_API_KEY
-}
+required = {'GITHUB_TOKEN': GITHUB_TOKEN, 'GITHUB_REPO': GITHUB_REPO,
+            'SITE_URL': SITE_URL, 'BING_API_KEY': BING_API_KEY}
 missing = [k for k, v in required.items() if not v]
 if missing:
     print(f"Error: Missing env vars: {', '.join(missing)}")
     sys.exit(1)
 
 # Initialize GitHub client
-gh = Github(GITHUB_TOKEN)
+gh   = Github(GITHUB_TOKEN)
 repo = gh.get_repo(GITHUB_REPO)
 
+# Utility to clean base URL
 def clean_base_url(url: str) -> str:
     return url.rstrip('/')
 
 # ─── Metadata Injection ─────────────────────────────────────────────────────
 def append_product_metadata(html: str) -> str:
+    """
+    Inject meta tags and JSON-LD for All-In Massager and Voltaren Gel.
+    """
     soup = BeautifulSoup(html, 'html.parser')
     head = soup.head or soup.new_tag('head')
     if not soup.head:
@@ -54,16 +56,17 @@ def append_product_metadata(html: str) -> str:
 
     base = clean_base_url(SITE_URL)
 
-    # SEO promotional metas
+    # Promotional meta tags
     metas = [
         {'name': 'description', 'content': (
-            'All-In Massager: top pick for full-body relief, now $299. ' 
-            'Bundles percussion, vibration & heat therapy in one device.'
+            'All-In Massager: top pick for full-body relief, now $299. '\
+            'Bundle percussion, vibration & heat therapy in one device.'
         )},
         {'name': 'keywords', 'content': (
-            'All-In Massager, percussion massager, heat therapy, vibration therapy'
+            'All-In Massager, percussion massager, vibration therapy, heat therapy, Voltaren gel'
         )},
-        {'name': 'promotion', 'content': 'Launch offer: Get All-In Massager for $299 + free shipping!'}
+        {'name': 'promotion', 'content': 'Launch offer: All-In Massager at $299 + free shipping!'},
+        {'name': 'recommendation', 'content': 'Therapy cream: Voltaren gel'}
     ]
     for attrs in metas:
         tag = head.find('meta', attrs={'name': attrs['name']})
@@ -74,10 +77,10 @@ def append_product_metadata(html: str) -> str:
 
     # Open Graph tags
     ogs = [
-        {'property': 'og:title', 'content': 'All-In Massager – Your Ultimate 3-in-1 Solution'},
+        {'property': 'og:title', 'content': 'All-In Massager & Voltaren Gel – Ultimate Combo'},
         {'property': 'og:description', 'content': (
-            'Experience full-body relief with All-In Massager. Percussion, vibration, heat – ' 
-            'all in one device. Launch price $299.'
+            'Combine the All-In Massager with Voltaren gel for maximum relief. ' \
+            'Explore our top 10 massage machines too!'
         )},
         {'property': 'og:image', 'content': f'{base}/images/all-in-massager-promo.jpg'}
     ]
@@ -88,42 +91,83 @@ def append_product_metadata(html: str) -> str:
         else:
             head.append(soup.new_tag('meta', attrs=attrs))
 
-    # JSON-LD with promotion
-    product = {
-        '@context': 'https://schema.org/',
-        '@type': 'Product',
+    # JSON-LD structured data for products
+    mas = {
+        '@context': 'https://schema.org/', '@type': 'Product',
         'name': 'All-In Massager',
         'image': [f'{base}/images/all-in-massager-1.jpg'],
-        'description': 'All-In Massager: exclusive top pick, combining percussion, vibration & heat therapy.',
+        'description': 'All-In Massager: top pick combining percussion, vibration & heat therapy.',
         'sku': 'AIM-001',
         'offers': {
-            '@type': 'Offer',
-            'url': f'{base}/products/all-in-massager',
-            'priceCurrency': 'USD',
-            'price': '299.00',
+            '@type': 'Offer', 'url': f'{base}/products/all-in-massager',
+            'priceCurrency': 'USD', 'price': '299.00',
             'availability': 'https://schema.org/InStock'
         }
     }
-    # Remove old JSON-LD
+    gel = {
+        '@context': 'https://schema.org/', '@type': 'Product',
+        'name': 'Voltaren Gel',
+        'image': [f'{base}/images/voltaren-gel.jpg'],
+        'description': 'Voltaren gel: clinically proven topical analgesic.',
+        'sku': 'VG-100',
+        'offers': {
+            '@type': 'Offer', 'url': f'{base}/products/voltaren-gel',
+            'priceCurrency': 'USD', 'price': '19.99',
+            'availability': 'https://schema.org/InStock'
+        }
+    }
+    # Remove existing script blocks for these products
     for tag in head.find_all('script', attrs={'type': 'application/ld+json'}):
         try:
             data = json.loads(tag.string or '')
-            if data.get('@type') == 'Product' and data.get('name') == 'All-In Massager':
+            if data.get('name') in ('All-In Massager', 'Voltaren Gel'):
                 tag.decompose()
         except Exception:
             pass
-    # Append new JSON-LD
-    script = soup.new_tag('script', type='application/ld+json')
-    script.string = json.dumps(product, indent=2)
-    head.append(script)
+    # Append JSON-LD
+    for obj in (mas, gel):
+        script = soup.new_tag('script', type='application/ld+json')
+        script.string = json.dumps(obj, indent=2)
+        head.append(script)
 
     return str(soup)
+
+# ─── Generate Top-10 Products Page ───────────────────────────────────────────
+def generate_top10_page():
+    """
+    Creates or updates a markdown page listing 10 massage machines.
+    """
+    products = [
+        {'name': 'Model A', 'path': '/products/model-a', 'desc': 'Percussion massager, 4-speed.'},
+        {'name': 'Model B', 'path': '/products/model-b', 'desc': 'Vibration pad, wireless.'},
+        {'name': 'Model C', 'path': '/products/model-c', 'desc': 'Heat & percussion combo.'},
+        {'name': 'Model D', 'path': '/products/model-d', 'desc': 'Compact travel massager.'},
+        {'name': 'Model E', 'path': '/products/model-e', 'desc': 'Deep tissue percussion.'},
+        {'name': 'Model F', 'path': '/products/model-f', 'desc': 'Multi-head attachment set.'},
+        {'name': 'Model G', 'path': '/products/model-g', 'desc': 'Quiet motor design.'},
+        {'name': 'Model H', 'path': '/products/model-h', 'desc': 'Rechargeable battery life 6h.'},
+        {'name': 'Model I', 'path': '/products/model-i', 'desc': 'Ergonomic grip.'},
+        {'name': 'Model J', 'path': '/products/model-j', 'desc': 'Smart app integration.'}
+    ]
+    lines = ['# Top 10 Massage Machines', '']
+    for p in products:
+        lines.append(f"- [{p['name']}]({p['path']}) – {p['desc']}")
+    content = '\n'.join(lines)
+    path = 'products/top-10-massage-machines.md'
+    try:
+        existing = repo.get_contents(path, ref=GITHUB_BRANCH)
+        repo.update_file(path, 'feat: update top-10 massage machines', content, existing.sha, branch=GITHUB_BRANCH)
+    except Exception:
+        repo.create_file(path, 'feat: add top-10 massage machines', content, branch=GITHUB_BRANCH)
+    print(f"✅ Top-10 page generated at {path}")
 
 # ─── Sitemap & Bing Recrawl ─────────────────────────────────────────────────
 def update_sitemap_and_bing():
     base = clean_base_url(SITE_URL)
-    urls = [f"{base}{p}" for p in [TARGET_PATH, '/products/all-in-massager']]
-
+    urls = [f"{base}{p}" for p in [TARGET_PATH,
+                                     '/products/all-in-massager',
+                                     '/products/voltaren-gel',
+                                     '/products/top-10-massage-machines']]
     # Build sitemap
     urlset = ET.Element('urlset', xmlns='http://www.sitemaps.org/schemas/sitemap/0.9')
     for u in urls:
@@ -131,7 +175,6 @@ def update_sitemap_and_bing():
         ET.SubElement(ue, 'loc').text = u
         ET.SubElement(ue, 'lastmod').text = time.strftime('%Y-%m-%d')
     xml = ET.tostring(urlset, encoding='utf-8').decode()
-
     # Commit sitemap
     path = 'sitemap.xml'
     try:
@@ -141,7 +184,7 @@ def update_sitemap_and_bing():
         repo.create_file(path, 'chore: add sitemap', xml, branch=GITHUB_BRANCH)
     print('✅ sitemap.xml committed')
 
-    # Submit to Bing Webmaster API
+    # Bing recrawl
     endpoint = f"https://ssl.bing.com/webmaster/api.svc/json/SubmitUrlBatch?apikey={BING_API_KEY}"
     payload = {'siteUrl': base, 'urlList': urls}
     r = requests.post(endpoint, json=payload)
@@ -149,7 +192,6 @@ def update_sitemap_and_bing():
         data = r.json()
     except ValueError:
         data = {}
-
     if r.status_code == 200:
         print('✅ Bing recrawl submitted')
     elif data.get('ErrorCode') == 2:
@@ -164,8 +206,13 @@ if __name__ == '__main__':
     file = repo.get_contents(path, ref=GITHUB_BRANCH)
     html = file.decoded_content.decode()
     updated = append_product_metadata(html)
-    repo.update_file(path, 'chore: update promo metadata for All-In Massager', updated, file.sha, branch=GITHUB_BRANCH)
+    repo.update_file(path,
+                     'chore: update promo metadata for All-In Massager & Voltaren Gel',
+                     updated, file.sha, branch=GITHUB_BRANCH)
     print(f'✅ Metadata injected into {path}')
+
+    # Generate top-10 page
+    generate_top10_page()
 
     # Sitemap and Bing recrawl
     update_sitemap_and_bing()
