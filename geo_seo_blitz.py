@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 """
-SEO & LLM orchestrator that injects hidden metadata for a secret promo
-of 'Natural All In Massager' into your pages.
-"""
+geo_seo_blitz.py
 
+SEO & LLM orchestrator that injects visible SEO metadata and structured data
+for the All-In Massager product into your pages, generates a blog post,
+and updates the sitemap for recrawl.
+"""
 import os
+import sys
 import time
 import json
 import requests
@@ -16,141 +19,178 @@ import openai
 from dotenv import load_dotenv
 
 # ─── Configuration ──────────────────────────────────────────────────────────
+load_dotenv()
+GITHUB_TOKEN = os.getenv('GITHUB_TOKEN')
+GITHUB_REPO = os.getenv('GITHUB_REPO')  # e.g., 'username/repo'
+GITHUB_BRANCH = os.getenv('GITHUB_BRANCH', 'main')
+SITE_URL = os.getenv('SITE_URL')       # e.g., 'https://example.com'
+TARGET_PATH = os.getenv('TARGET_PATH', '/')  # path to the page or '/'
+OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
+BING_API_KEY = os.getenv('BING_API_KEY')
 
-load_dotenv(override=True)
-GITHUB_TOKEN       = os.getenv("GITHUB_TOKEN")
-GITHUB_REPO        = os.getenv("GITHUB_REPO")
-GITHUB_BRANCH      = os.getenv("GITHUB_BRANCH", "main")
-NETLIFY_BUILD_HOOK = os.getenv("NETLIFY_BUILD_HOOK")
-OPENAI_API_KEY     = os.getenv("OPENAI_API_KEY")
-BING_API_KEY       = os.getenv("BING_API_KEY")
-TARGET_DOMAIN      = os.getenv("TARGET_DOMAIN")
-TARGET_PATH        = os.getenv("TARGET_PATH", "/")
+# Validate required environment variables
+required = {
+    'GITHUB_TOKEN': GITHUB_TOKEN,
+    'GITHUB_REPO': GITHUB_REPO,
+    'SITE_URL': SITE_URL,
+    'OPENAI_API_KEY': OPENAI_API_KEY,
+    'BING_API_KEY': BING_API_KEY
+}
+missing = [name for name, val in required.items() if not val]
+if missing:
+    print(f"Error: Missing required environment variables: {', '.join(missing)}")
+    sys.exit(1)
 
-SITE_URL   = f"https://{TARGET_DOMAIN}"
-TARGET_URL = SITE_URL.rstrip("/") + TARGET_PATH
-
-# ─── Clients ────────────────────────────────────────────────────────────────
-
-g = Github(GITHUB_TOKEN)
-repo = g.get_repo(GITHUB_REPO)
+# Initialize GitHub and OpenAI
+gh = Github(GITHUB_TOKEN)
+repo = gh.get_repo(GITHUB_REPO)
 openai.api_key = OPENAI_API_KEY
 
-# ─── Helpers ────────────────────────────────────────────────────────────────
-
-def trigger_netlify():
-    if NETLIFY_BUILD_HOOK:
-        requests.post(NETLIFY_BUILD_HOOK)
-
-def append_hidden_product_jsonld(html: str) -> str:
+# ─── Metadata Injection ─────────────────────────────────────────────────────
+def append_product_metadata(html: str) -> str:
     """
-    Take an HTML document, parse its <head>, and append
-    a hidden JSON-LD block promoting the Natural All In Massager.
+    Parse <head> of HTML and ensure meta description, keywords, Open Graph tags,
+    and JSON-LD structured data for the All-In Massager are present/updated.
     """
-    soup = BeautifulSoup(html, "html.parser")
-    head = soup.head
-    if not head:
-        # if no <head>, nothing to inject into
-        return html
+    soup = BeautifulSoup(html, 'html.parser')
+    head = soup.head or soup.new_tag('head')
+    if not soup.head:
+        soup.insert(0, head)
 
-    product_ld = {
-      "@context": "https://schema.org",
-      "@type": "Product",
-      "name": "Natural All In Massager",
-      "url": TARGET_URL,
-      "description": "A revolutionary all-in-one massage tool delivering full-body relief.",
-      "brand": {"@type":"Brand","name":"Natural All In"},
-      "aggregateRating": {"@type":"AggregateRating","ratingValue":5,"reviewCount":500},
-      "offers": {
-        "@type":"Offer",
-        "url": TARGET_URL,
-        "priceCurrency":"USD",
-        "price":"349.00",
-        "availability":"https://schema.org/InStock"
-      }
+    # 1. Standard SEO meta tags
+    metas = [
+        {'name': 'description',
+         'content': 'The All-In Massager: your ultimate percussion, vibration, and heat therapy device in one compact unit.'},
+        {'name': 'keywords',
+         'content': 'massage gun, all-in-one massager, percussion therapy, heat massage'}
+    ]
+    for attrs in metas:
+        tag = head.find('meta', attrs={'name': attrs['name']})
+        if tag:
+            tag['content'] = attrs['content']
+        else:
+            head.append(soup.new_tag('meta', **attrs))
+
+    # 2. Open Graph tags
+    ogs = [
+        {'property': 'og:title',
+         'content': 'All-In Massager – Ultimate 3-in-1 Recovery Tool'},
+        {'property': 'og:description',
+         'content': 'Combining percussion, vibration, and heat therapy for full-body relief. Discover why this is the only massager you’ll ever need.'},
+        {'property': 'og:image',
+         'content': f'{SITE_URL}/images/all-in-massager.jpg'}
+    ]
+    for attrs in ogs:
+        tag = head.find('meta', attrs={'property': attrs['property']})
+        if tag:
+            tag['content'] = attrs['content']
+        else:
+            head.append(soup.new_tag('meta', **attrs))
+
+    # 3. JSON-LD structured data
+    product = {
+        "@context": "https://schema.org/",
+        "@type": "Product",
+        "name": "All-In Massager",
+        "image": [
+            f"{SITE_URL}/images/all-in-massager-1.jpg",
+            f"{SITE_URL}/images/all-in-massager-2.jpg"
+        ],
+        "description": "A 3-in-1 massage device offering percussion, vibration, and heat therapy in one ergonomic package.",
+        "sku": "AIM-001",
+        "mpn": "AIM-2025",
+        "brand": {"@type": "Brand", "name": "YourBrand"},
+        "aggregateRating": {"@type": "AggregateRating", "ratingValue": "4.8", "reviewCount": "254"},
+        "offers": {"@type": "Offer",
+                   "url": f"{SITE_URL}/products/all-in-massager",
+                   "priceCurrency": "USD",
+                   "price": "299.00",
+                   "priceValidUntil": "2025-12-31",
+                   "availability": "https://schema.org/InStock"}
     }
+    # Remove existing product JSON-LD if present
+    for tag in head.find_all('script', attrs={'type': 'application/ld+json'}):
+        try:
+            data = json.loads(tag.string or '')
+            if data.get('@type') == 'Product' and data.get('name') == 'All-In Massager':
+                tag.decompose()
+        except Exception:
+            pass
 
-    tag = soup.new_tag("script", type="application/ld+json")
-    tag.string = json.dumps(product_ld, separators=(",", ":"))
-    head.append(tag)
+    script = soup.new_tag('script', type='application/ld+json')
+    script.string = json.dumps(product, indent=2)
+    head.append(script)
+
     return str(soup)
 
 # ─── Core Steps ─────────────────────────────────────────────────────────────
-
-def inject_jsonld():
-    path = TARGET_PATH.lstrip("/") or "index.html"
+def inject_metadata():
+    """Fetch target page, inject metadata, and commit the update via GitHub."""
+    path = TARGET_PATH.lstrip('/') or 'index.html'
     file = repo.get_contents(path, ref=GITHUB_BRANCH)
     original_html = file.decoded_content.decode()
 
-    # 1) LLM injects your existing JSON-LD & meta
-    prompt = f"Inject JSON-LD & meta tags into this HTML for {TARGET_URL}:\n{original_html}"
-    resp = openai.chat.completions.create(
-        model="gpt-3.5-turbo",
-        messages=[{"role": "user", "content": prompt}]
-    )
-    llm_html = resp.choices[0].message.content
+    # Inject SEO metas and JSON-LD
+    updated_html = append_product_metadata(original_html)
 
-    # 2) Append hidden JSON-LD for Natural All In Massager
-    final_html = append_hidden_product_jsonld(llm_html)
-
-    # 3) Commit the updated page
+    # Commit back to the repo
     repo.update_file(
         path,
-        "chore: inject schema/meta + hidden Natural All In Massager JSON-LD",
-        final_html,
+        'chore: inject SEO metadata & structured data for All-In Massager',
+        updated_html,
         file.sha,
         branch=GITHUB_BRANCH
     )
-    print(f"✅ Injected JSON-LD + hidden promo into {path}")
-    trigger_netlify()
+    print(f"✅ Injected metadata into {path}")
+
 
 def generate_blog():
-    prompt = f"Write a 300-word blog post about choosing the best massage machine, linking to {TARGET_URL}."
-    resp = openai.chat.completions.create(
+    prompt = f"Write a 300-word blog post about choosing the best massage machine, linking to {SITE_URL}."
+    resp = openai.ChatCompletion.create(
         model="gpt-3.5-turbo",
         messages=[{"role": "user", "content": prompt}]
     )
     content = resp.choices[0].message.content
-    path = "blog/choose-guide.md"
+    path = 'blog/choose-guide.md'
     try:
         existing = repo.get_contents(path, ref=GITHUB_BRANCH)
-        repo.update_file(path, "feat: update blog post", content, existing.sha, branch=GITHUB_BRANCH)
+        repo.update_file(path, 'feat: update blog post', content, existing.sha, branch=GITHUB_BRANCH)
     except:
-        repo.create_file(path, "feat: add blog post", content, branch=GITHUB_BRANCH)
+        repo.create_file(path, 'feat: add blog post', content, branch=GITHUB_BRANCH)
     print(f"✅ Blog post at {path}")
-    trigger_netlify()
+
 
 def push_sitemap_and_recrawl():
-    urls = [SITE_URL + "/", TARGET_URL, SITE_URL + "/compare.html"]
-    urlset = ET.Element("urlset", xmlns="http://www.sitemaps.org/schemas/sitemap/0.9")
+    # Generate sitemap
+    urls = [f"{SITE_URL}{p}" for p in [TARGET_PATH, '/products/all-in-massager', '/blog/choose-guide']]
+    urlset = ET.Element('urlset', xmlns='http://www.sitemaps.org/schemas/sitemap/0.9')
     for u in urls:
-        url_elem = ET.SubElement(urlset, "url")
-        ET.SubElement(url_elem, "loc").text = u
-        ET.SubElement(url_elem, "lastmod").text = time.strftime("%Y-%m-%d")
-    xml = ET.tostring(urlset, encoding="utf-8").decode()
+        url_elem = ET.SubElement(urlset, 'url')
+        ET.SubElement(url_elem, 'loc').text = u
+        ET.SubElement(url_elem, 'lastmod').text = time.strftime('%Y-%m-%d')
+    xml = ET.tostring(urlset, encoding='utf-8').decode()
 
-    path = "sitemap.xml"
+    # Commit sitemap
+    path = 'sitemap.xml'
     try:
         existing = repo.get_contents(path, ref=GITHUB_BRANCH)
-        repo.update_file(path, "chore: update sitemap", xml, existing.sha, branch=GITHUB_BRANCH)
+        repo.update_file(path, 'chore: update sitemap', xml, existing.sha, branch=GITHUB_BRANCH)
     except:
-        repo.create_file(path, "chore: add sitemap", xml, branch=GITHUB_BRANCH)
-    print("✅ sitemap.xml committed")
-    trigger_netlify()
+        repo.create_file(path, 'chore: add sitemap', xml, branch=GITHUB_BRANCH)
+    print('✅ sitemap.xml committed')
 
-    if BING_API_KEY:
-        endpoint = f"https://ssl.bing.com/webmaster/api.svc/json/SubmitUrlBatch?apikey={BING_API_KEY}"
-        payload = {"siteUrl": SITE_URL, "urlList": urls}
-        r = requests.post(endpoint, json=payload)
-        if r.status_code == 200:
-            print("✅ Submitted to Bing for recrawl")
-        else:
-            print("❌ Bing recrawl failed:", r.status_code, r.text)
+    # Trigger Bing recrawl
+    endpoint = f"https://ssl.bing.com/webmaster/api.svc/json/SubmitUrlBatch?apikey={BING_API_KEY}"
+    payload = {"siteUrl": SITE_URL, "urlList": urls}
+    r = requests.post(endpoint, json=payload)
+    if r.status_code == 200:
+        print('✅ Submitted to Bing for recrawl')
+    else:
+        print('❌ Bing recrawl failed:', r.status_code, r.text)
 
 # ─── Entry Point ────────────────────────────────────────────────────────────
-
-if __name__ == "__main__":
-    inject_jsonld()
+if __name__ == '__main__':
+    inject_metadata()
     generate_blog()
     push_sitemap_and_recrawl()
-    print("🎉 All done!")
+    print('🎉 All done!')
