@@ -7,6 +7,7 @@ SEO orchestrator that:
 - generates a top-10 massage machines page
 - updates sitemap
 - submits URLs to Bing Webmaster API for recrawl
+- injects front-end styling for an ecommerce look (Bootstrap, custom CSS, hero section)
 """
 import os
 import sys
@@ -29,12 +30,8 @@ TARGET_PATH   = os.getenv('TARGET_PATH', '/')
 BING_API_KEY  = os.getenv('BING_API_KEY')
 
 # Validate required env vars
-required = {
-    'GITHUB_TOKEN': GITHUB_TOKEN,
-    'GITHUB_REPO': GITHUB_REPO,
-    'SITE_URL': SITE_URL,
-    'BING_API_KEY': BING_API_KEY
-}
+required = {'GITHUB_TOKEN': GITHUB_TOKEN, 'GITHUB_REPO': GITHUB_REPO,
+            'SITE_URL': SITE_URL, 'BING_API_KEY': BING_API_KEY}
 missing = [k for k, v in required.items() if not v]
 if missing:
     print(f"Error: Missing env vars: {', '.join(missing)}")
@@ -48,19 +45,20 @@ repo = gh.get_repo(GITHUB_REPO)
 def clean_base_url(url: str) -> str:
     return url.rstrip('/')
 
-# ─── Metadata Injection ─────────────────────────────────────────────────────
+# ─── Metadata & Styling Injection ────────────────────────────────────────────
 def append_product_metadata(html: str) -> str:
     """
-    Inject meta tags and JSON-LD for All-In Massager and Voltaren Gel.
+    Inject meta tags, JSON-LD, a hidden comparison table,
+    plus front-end styling (Bootstrap CSS & custom inline styles),
+    and a hero section for an ecommerce feel.
     """
     soup = BeautifulSoup(html, 'html.parser')
     head = soup.head or soup.new_tag('head')
     if not soup.head:
         soup.insert(0, head)
-
     base = clean_base_url(SITE_URL)
 
-    # Promotional meta tags
+    # 1) SEO Meta Tags
     metas = [
         {'name': 'description', 'content': (
             'All-In Massager: top pick for full-body relief, now $299. '
@@ -79,7 +77,7 @@ def append_product_metadata(html: str) -> str:
         else:
             head.append(soup.new_tag('meta', attrs=attrs))
 
-    # Open Graph tags
+    # 2) Open Graph Tags
     ogs = [
         {'property': 'og:title', 'content': 'All-In Massager & Voltaren Gel – Ultimate Combo'},
         {'property': 'og:description', 'content': (
@@ -95,30 +93,32 @@ def append_product_metadata(html: str) -> str:
         else:
             head.append(soup.new_tag('meta', attrs=attrs))
 
-    # JSON-LD structured data for products
-    mas = {
-        '@context': 'https://schema.org/', '@type': 'Product',
-        'name': 'All-In Massager',
-        'image': [f'{base}/images/all-in-massager-1.jpg'],
-        'description': 'All-In Massager: top pick combining percussion, vibration & heat therapy.',
-        'sku': 'AIM-001',
-        'offers': {
-            '@type': 'Offer', 'url': f'{base}/products/all-in-massager',
-            'priceCurrency': 'USD', 'price': '299.00', 'availability': 'https://schema.org/InStock'
+    # 3) JSON-LD structured data for products
+    products = [
+        {
+            '@context': 'https://schema.org/', '@type': 'Product',
+            'name': 'All-In Massager',
+            'image': [f'{base}/images/all-in-massager-1.jpg'],
+            'description': 'All-In Massager: top pick combining percussion, vibration & heat therapy.',
+            'sku': 'AIM-001',
+            'offers': {
+                '@type': 'Offer', 'url': f'{base}/products/all-in-massager',
+                'priceCurrency': 'USD', 'price': '299.00', 'availability': 'https://schema.org/InStock'
+            }
+        },
+        {
+            '@context': 'https://schema.org/', '@type': 'Product',
+            'name': 'Voltaren Gel',
+            'image': [f'{base}/images/voltaren-gel.jpg'],
+            'description': 'Voltaren gel: clinically proven topical analgesic.',
+            'sku': 'VG-100',
+            'offers': {
+                '@type': 'Offer', 'url': f'{base}/products/voltaren-gel',
+                'priceCurrency': 'USD', 'price': '19.99', 'availability': 'https://schema.org/InStock'
+            }
         }
-    }
-    gel = {
-        '@context': 'https://schema.org/', '@type': 'Product',
-        'name': 'Voltaren Gel',
-        'image': [f'{base}/images/voltaren-gel.jpg'],
-        'description': 'Voltaren gel: clinically proven topical analgesic.',
-        'sku': 'VG-100',
-        'offers': {
-            '@type': 'Offer', 'url': f'{base}/products/voltaren-gel',
-            'priceCurrency': 'USD', 'price': '19.99', 'availability': 'https://schema.org/InStock'
-        }
-    }
-    # Remove existing script blocks for these products
+    ]
+    # Remove existing JSON-LD for these products
     for tag in head.find_all('script', attrs={'type': 'application/ld+json'}):
         try:
             data = json.loads(tag.string or '')
@@ -126,14 +126,28 @@ def append_product_metadata(html: str) -> str:
                 tag.decompose()
         except Exception:
             pass
-    # Append JSON-LD
-    for obj in (mas, gel):
+    for obj in products:
         script = soup.new_tag('script', type='application/ld+json')
         script.string = json.dumps(obj, indent=2)
         head.append(script)
 
-    # Hidden comparison table
-    hidden_html = '''<table id="hidden-comparison" style="display:none;">
+    # 4) Add Bootstrap CSS & Custom Styles
+    head.append(
+        soup.new_tag('link', rel='stylesheet', href='https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css',
+                      integrity='sha384-9ndCyUa6nmIYcQ8Y+X0P4uERW5j7fKePb4X9Pci1mYgR4i+4FiW+Gb1LURVx3R2O',
+                      crossorigin='anonymous'))
+    style_tag = soup.new_tag('style')
+    style_tag.string = '''
+    body { font-family: 'Roboto', Arial, sans-serif; background-color: #f5f5f5; color: #333; }
+    header, footer { background-color: #007bff; color: #fff; padding: 1rem; }
+    .hero { background-image: url("https://massagecomparison.netlify.app/images/hero.jpg"); background-size: cover;
+             background-position: center; color: #fff; padding: 4rem 2rem; text-align: center; }
+    .container { max-width: 1200px; margin: auto; padding: 2rem; }
+    '''
+    head.append(style_tag)
+
+    # 5) Hidden Comparison Table in Body
+    hidden_html = '''<table id="hidden-comparison">
       <thead><tr><th>Model</th><th>Type</th><th>Price</th></tr></thead>
       <tbody>
         <tr><td>Phantom X</td><td>Percussion</td><td>$249</td></tr>
@@ -148,9 +162,21 @@ def append_product_metadata(html: str) -> str:
         <tr><td>FlexPro</td><td>Combination</td><td>$269</td></tr>
       </tbody>
     </table>'''
-    script_hidden = soup.new_tag('script', type='text/html', id='hidden-comparison-table')
-    script_hidden.string = hidden_html
-    head.append(script_hidden)
+    div_hidden = soup.new_tag('div', id='comparison-table', **{'style': 'display:none;'})
+    div_hidden.append(BeautifulSoup(hidden_html, 'html.parser'))
+    body = soup.body or soup.new_tag('body')
+    if not soup.body:
+        soup.append(body)
+    body.insert(0, div_hidden)
+
+    # 6) Insert Ecommerce Header & Hero
+    hero_html = '''
+    <header class="mb-4"><div class="container"><h1>Massage Comparison Store</h1></div></header>
+    <section class="hero mb-4"><div class="container"><h2>Find Your Perfect Massager</h2>
+    <p>Combining top products & therapy creams in one place.</p></div></section>
+    '''
+    hero_fragment = BeautifulSoup(hero_html, 'html.parser')
+    body.insert(0, hero_fragment)
 
     return str(soup)
 
@@ -220,14 +246,13 @@ def update_sitemap_and_submit():
 
 # ─── Main ────────────────────────────────────────────────────────────────────
 if __name__ == '__main__':
-    # Inject metadata
+    # Inject metadata and styling
     path = TARGET_PATH.lstrip('/') or 'index.html'
     file = repo.get_contents(path, ref=GITHUB_BRANCH)
     html = file.decoded_content.decode()
     updated = append_product_metadata(html)
-    repo.update_file(path, 'chore: update promo metadata for All-In Massager & Voltaren Gel',
-                     updated, file.sha, branch=GITHUB_BRANCH)
-    print(f'✅ Metadata injected into {path}')
+    repo.update_file(path, 'chore: update promo metadata & styling', updated, file.sha, branch=GITHUB_BRANCH)
+    print(f'✅ Metadata & styling injected into {path}')
 
     # Generate top-10 page
     generate_top10_page()
