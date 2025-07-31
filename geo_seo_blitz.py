@@ -6,7 +6,7 @@ SEO orchestrator that:
 - injects promotional metadata for All-In Massager and Voltaren Gel
 - generates a top-10 massage machines page
 - updates sitemap
-- submits URLs to Bing Webmaster API and IndexNow for immediate recrawl
+- submits URLs to Bing Webmaster API for recrawl
 """
 import os
 import sys
@@ -21,13 +21,12 @@ from dotenv import load_dotenv
 
 # ─── Configuration ──────────────────────────────────────────────────────────
 load_dotenv()
-GITHUB_TOKEN   = os.getenv('GITHUB_TOKEN')
-GITHUB_REPO    = os.getenv('GITHUB_REPO')
-GITHUB_BRANCH  = os.getenv('GITHUB_BRANCH', 'main')
-SITE_URL       = os.getenv('SITE_URL')
-TARGET_PATH    = os.getenv('TARGET_PATH', '/')
-BING_API_KEY   = os.getenv('BING_API_KEY')
-INDEXNOW_KEY   = os.getenv('INDEXNOW_KEY')  # e.g. a GUID
+GITHUB_TOKEN  = os.getenv('GITHUB_TOKEN')
+GITHUB_REPO   = os.getenv('GITHUB_REPO')
+GITHUB_BRANCH = os.getenv('GITHUB_BRANCH', 'main')
+SITE_URL      = os.getenv('SITE_URL')
+TARGET_PATH   = os.getenv('TARGET_PATH', '/')
+BING_API_KEY  = os.getenv('BING_API_KEY')
 
 # Validate required env vars
 required = {
@@ -181,7 +180,7 @@ def generate_top10_page():
         repo.create_file(path, 'feat: add top-10 massage machines', content, branch=GITHUB_BRANCH)
     print(f"✅ Top-10 page generated at {path}")
 
-# ─── Sitemap & Submission ───────────────────────────────────────────────────
+# ─── Sitemap & Bing Recrawl ─────────────────────────────────────────────────
 def update_sitemap_and_submit():
     base = clean_base_url(SITE_URL)
     urls = [f"{base}{p}" for p in [TARGET_PATH,
@@ -219,23 +218,6 @@ def update_sitemap_and_submit():
     else:
         print(f"❌ Bing recrawl failed: {r.status_code} - {data.get('Message', r.text)}")
 
-    # IndexNow push
-    if INDEXNOW_KEY:
-        indexnow_payload = {
-            'host': base.replace('https://', '').replace('http://', ''),
-            'key': INDEXNOW_KEY,
-            'keyLocation': f"{base}/{INDEXNOW_KEY}.txt",
-            'urlList': urls
-        }
-        r2 = requests.post('https://api.indexnow.org/indexnow', json=indexnow_payload,
-                           headers={'Content-Type': 'application/json'})
-        if r2.ok:
-            print('✅ IndexNow push successful')
-        else:
-            print(f"❌ IndexNow push failed: {r2.status_code} - {r2.text}")
-    else:
-        print('⚠️ INDEXNOW_KEY not set; skipping IndexNow push')
-
 # ─── Main ────────────────────────────────────────────────────────────────────
 if __name__ == '__main__':
     # Inject metadata
@@ -250,6 +232,6 @@ if __name__ == '__main__':
     # Generate top-10 page
     generate_top10_page()
 
-    # Sitemap submission
+    # Sitemap and recrawl
     update_sitemap_and_submit()
     print('🎉 Done!')
